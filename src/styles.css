@@ -116,6 +116,7 @@ input::placeholder { color: var(--muted); }
 .coverage-legend .shared-swatch { background: repeating-linear-gradient(-55deg, var(--muted), var(--muted) 2px, #374458 2px, #374458 5px); }
 .stats-panel { margin-top: 16px; overflow: hidden; }
 .stats-panel > .panel-heading { padding: 18px 19px 0; }
+#statsTitle { scroll-margin-top: 12px; }
 .stats-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .stats-table th, .stats-table td { vertical-align: top; text-align: left; padding: 12px 16px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .stats-table thead { background: #1e293b; }
@@ -129,6 +130,7 @@ input::placeholder { color: var(--muted); }
 .empty { padding: 14px; background: var(--field); border-radius: 7px; color: var(--muted); font-size: .9rem; }
 .explore-search { display: flex; gap: 8px; max-width: 690px; margin-bottom: 16px; }
 .explore-tools { align-items: start; margin-bottom: 16px; }
+#filterCoverage { margin-top: 5px; }
 .filters { flex: 1; padding: 11px 14px; max-width: 690px; }
 .filters summary { font-size: .95rem; }
 .filters form { display: grid; gap: 10px; margin-top: 12px; }

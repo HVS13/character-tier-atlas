@@ -25,8 +25,9 @@
       <div class="page-heading">
         <div><h1 id="compareTitle">Character comparison</h1><p>Choose two characters and the exact Keys you want to compare.</p></div>
         <div class="actions">
-          <button class="button secondary" type="button" id="share">Share link</button>
-          <button class="button primary" type="button" id="copyMatch">Copy comparison</button>
+          <button class="button text-button" type="button" id="jumpStats" disabled>Jump to stats</button>
+          <button class="button secondary" type="button" id="share" disabled>Share link</button>
+          <button class="button primary" type="button" id="copyMatch" disabled>Copy comparison</button>
         </div>
       </div>
       <div class="selection-grid">
@@ -70,7 +71,7 @@
         </section>
       </div>
       <section class="panel stats-panel" aria-labelledby="statsTitle">
-        <div class="panel-heading"><div><h2 id="statsTitle">Stats side by side</h2><p>Open a value for the full text available here.</p></div><div class="actions"><label class="check"><input id="hideMissing" type="checkbox"> Hide empty rows</label><button id="exportCsv" class="button secondary" type="button">Download CSV</button></div></div>
+        <div class="panel-heading"><div><h2 id="statsTitle" tabindex="-1">Stats side by side</h2><p>Expand a value to read its text. The CSV includes every row.</p></div><div class="actions"><label class="check"><input id="hideMissing" type="checkbox"> Hide empty rows</label><label class="check"><input id="differencesOnly" type="checkbox"> Differences only</label><button id="exportCsv" class="button secondary" type="button">Download CSV</button></div></div>
         <div id="statsTable"></div>
       </section>
     </section>
@@ -92,6 +93,7 @@
         <div class="actions library-actions"><button class="button secondary" type="button" id="importButton">Import backup</button><button class="button text-button" type="button" id="exportLibrary">Export library</button><input type="file" id="importFile" accept="application/json,.json" hidden></div>
       </div>
       <p id="exploreNotice" class="notice" role="status"></p>
+      <p id="filterCoverage" class="notice" role="status" hidden></p>
       <div id="catalog" class="catalog"></div>
       <div id="catalogPaging" class="actions paging" hidden><button class="button secondary" type="button" id="showMore">Show more</button></div>
     </section>
@@ -104,10 +106,10 @@
     <section id="sourcesView" aria-labelledby="sourcesTitle" hidden>
       <div class="page-heading"><div><h1 id="sourcesTitle">Sources and method</h1><p>Check the evidence behind a rating and how Atlas maps it to a Key.</p></div></div>
       <div class="source-grid">
-        <article class="panel prose"><h2>VS Battles Wiki</h2><p>Atlas uses its character profiles and tier system. Compare shows the wiki revision when available. Starter profiles contain excerpts. Refresh a profile for the latest text the API exposes.</p><a href="https://vsbattles.fandom.com/wiki/Tiering_System">Read the tier definitions</a><a href="https://vsbattles.fandom.com/wiki/Standard_Format_for_Character_Profiles">Read the profile standard</a><a href="https://creativecommons.org/licenses/by-sa/3.0/">Wiki text license (CC BY-SA 3.0)</a></article>
+        <article class="panel prose"><h2>VS Battles Wiki</h2><p>Atlas uses its character profiles and tier system. Share links preserve the wiki revision when available. Refresh a profile for the current revision.</p><a href="https://vsbattles.fandom.com/wiki/Tiering_System">Read the tier definitions</a><a href="https://vsbattles.fandom.com/wiki/Standard_Format_for_Character_Profiles">Read the profile standard</a><a href="https://creativecommons.org/licenses/by-sa/3.0/">Wiki text license (CC BY-SA 3.0)</a></article>
         <article class="panel prose"><h2>Canon evidence</h2><p>Original works and publisher material can establish what happened in a specific continuity. Atlas links to selected official sources where available.</p><a href="https://en.dragon-ball-official.com/news/01_1574.html">Dragon Ball official manga recap</a><a href="https://www.marvel.com/characters/spider-man-peter-parker/in-comics">Marvel’s Spider-Man profile</a></article>
         <article class="panel prose"><h2>Other community scales</h2><p>Character Stats and Profiles Wiki allows multiple editors’ versions of the same character. Power Scaling Wiki defines its own scale. Read their ratings in the context of each wiki’s rules.</p><a href="https://character-stats-and-profiles.fandom.com/wiki/Rules_and_Guidelines">Character Stats and Profiles Wiki rules</a><a href="https://psbattles.fandom.com/wiki/Tiering_System">Power Scaling Wiki tiers</a></article>
-        <article class="panel prose"><h2>Key mapping</h2><p>A Key is the wiki’s named edition, era, or form. Atlas maps parallel columns by position and stat tabs by matching labels. It marks fields shared across Keys and leaves ambiguous fields unmapped. The tier chart shows each explicit rating for a Key.</p><a href="https://vsbattles.fandom.com/wiki/Editing_Rules">Read the wiki’s evidence rules</a></article>
+        <article class="panel prose"><h2>Key mapping</h2><p>A Key is the wiki’s named edition, era, or form. Atlas maps parallel columns by position. It uses exact tab labels and confirmed aliases in complete, ordered tab sets. It marks shared fields and leaves uncertain fields unmapped.</p><a href="https://vsbattles.fandom.com/wiki/Editing_Rules">Read the wiki’s evidence rules</a></article>
       </div>
       <section class="panel prose classic"><h2>Classic explorer</h2><p>The classic app still handles full roster indexing, incremental updates, and nested rule groups. Export a classic cache there and import it into Atlas to bring your library across.</p><a href="./legacy/">Open classic explorer</a></section>
     </section>

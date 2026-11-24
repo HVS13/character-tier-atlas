@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { matchesKey, parseProfile, statAt } from '../src/scaling.mjs';
-import { adaptLegacy, toProfile } from '../src/wiki.mjs';
-import { comparisonCsv, describeSelection, tierChart, tierRelationship } from '../src/views.mjs';
+import { adaptLegacy, getProfile, toProfile } from '../src/wiki.mjs';
+import { comparisonCsv, describeSelection, renderTable, tierChart, tierRelationship } from '../src/views.mjs';
 
 test('reads top-level columns, preserves gaps and does not flatten ratings', () => {
   const profile = parseProfile(`==Powers and Stats==
@@ -47,6 +47,34 @@ test('rejects an unparsed redirect as a character profile', () => {
   assert.throws(() => toProfile({ revisions: [{ slots: { main: { content: '#REDIRECT [[A]]' } } }] }), /no readable/);
 });
 
+test('maps a stat tab with an explicit alternate name or unique shortened Key', () => {
+  const template = `<tabber>
+Awakened Garou: Cosmic Fear Mode=[[File:cosmic.png]]
+</tabber>
+== Powers and Stats ==
+'''Key:''' Hero Hunter | Half-Monster | Awakened Garou | Parallel Timeline Awakened Garou
+'''Tier:''' 7-A | 6-B | 4-A | 4-A
+<tabber>
+Hero Hunter='''Speed:''' First
+|-|Half-Monster='''Speed:''' Second
+|-|Cosmic Fear Mode='''Speed:''' Third
+|-|Parallel Timeline='''Speed:''' Fourth
+</tabber>`;
+  assert.deepEqual(parseProfile(template).stats.Speed.parts, ['First', 'Second', 'Third', 'Fourth']);
+  const shifted = template.replace('Hero Hunter=', 'Swap=').replace('Half-Monster=', 'Hero Hunter=').replace('Swap=', 'Half-Monster=');
+  assert.equal(statAt(parseProfile(shifted), 2, 'Speed').scope, 'missing');
+});
+
+test('requests a pinned revision and rejects a response for the wrong revision', async t => {
+  const page = { pageid: 42, title: 'Fixture', revisions: [{ revid: 17, slots: { main: { content: 'Tier: 4-A' } } }] };
+  const request = t.mock.method(globalThis, 'fetch', async () => Response.json({ query: { pages: [page] } }));
+  assert.equal((await getProfile(42, 17)).revision, 17);
+  const requestUrl = request.mock.calls[0].arguments[0];
+  assert.equal(requestUrl.searchParams.get('revids'), '17');
+  assert.equal(requestUrl.searchParams.has('pageids'), false);
+  await assert.rejects(getProfile(42, 18), /Wiki revision 18 is unavailable/);
+});
+
 test('imports classic backups with only attributable stats', () => {
   const { profiles } = adaptLegacy({ app: 'VS Battles Character Explorer', format: 1,
     index: { pages: [{ pageid: 13, title: 'Character' }] }, profiles: { 13: {
@@ -67,4 +95,6 @@ test('renders starter data with separate tier categories and exports selected Ke
   assert.match(comparisonCsv(sides), /Son Goku \(DBS Manga\) \(Battle of Gods\)/);
   assert.match(comparisonCsv(sides), /Special:PermanentLink/);
   assert.match(describeSelection({ ...sides[0], appearance: 1 }), /Appearance:/);
+  assert.match(a.stats['Attack Potency'].parts[0], /Low Multiverse level/);
+  assert.match(renderTable([sides[0], sides[0]], false, true), /No differences match/);
 });

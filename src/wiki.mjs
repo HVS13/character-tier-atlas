@@ -34,12 +34,15 @@ export function toProfile(page) {
   };
 }
 
-export async function getProfile(id) {
+export async function getProfile(id, revision = 0) {
+  const page = revision ? { revids: revision } : { pageids: id, redirects: '1' };
   const data = await wikiRequest({
-    pageids: id, redirects: '1', prop: 'revisions|pageimages|categories', rvprop: 'ids|timestamp|content',
+    ...page, prop: 'revisions|pageimages|categories', rvprop: 'ids|timestamp|content',
     rvslots: 'main', piprop: 'thumbnail', pithumbsize: '320', cllimit: '100', clshow: '!hidden',
   });
-  return toProfile(data.query?.pages?.[0]);
+  const result = data.query?.pages?.[0];
+  if (revision && (result?.pageid !== id || result.revisions?.[0]?.revid !== revision)) throw Error(`Wiki revision ${revision} is unavailable for this character.`);
+  return toProfile(result);
 }
 
 export async function searchWiki(query, signal) {

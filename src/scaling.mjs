@@ -7,6 +7,7 @@ export const TIERS = [
 ];
 
 export const STATS = ['Attack Potency', 'Speed', 'Durability', 'Lifting Strength', 'Striking Strength', 'Range', 'Stamina', 'Intelligence', 'Powers and Abilities', 'Standard Equipment', 'Weaknesses'];
+export const MAPPING_VERSION = 2;
 const fields = ['Origin', 'Key', 'Tier', ...STATS];
 const labels = new Map(fields.map(field => [field.toLowerCase(), field]));
 labels.set('keys', 'Key');
@@ -92,16 +93,42 @@ function portraitsIn(summary) {
   }).slice(0, 60);
 }
 
+function pairedTabs(groups, keys, portraits) {
+  const normalize = text => text.toLowerCase();
+  const names = keys.map(normalize);
+  const aliases = portraits.flatMap(({ path }) => {
+    const pair = path[0].split(/:\s+/);
+    return pair.length === 2 ? [[normalize(pair[0]), normalize(pair[1])]] : [];
+  });
+  return groups.map(group => {
+    const indices = group.map(({ name }) => {
+      const index = names.indexOf(normalize(name));
+      return index >= 0 && names.indexOf(normalize(name), index + 1) === -1 ? index : -1;
+    });
+    // A shortened label can fill its slot only in a complete, independently anchored tab set.
+    const ordered = group.length === names.length && indices.filter((index, i) => index === i).length >= 2 &&
+      group.every(({ name }, i) => {
+        if (indices[i] >= 0) return indices[i] === i;
+        const label = normalize(name);
+        const prefix = label.includes(' ') && names[i].startsWith(`${label} `) &&
+          names.filter(key => key === label || key.startsWith(`${label} `)).length === 1;
+        const linked = aliases.some(([key, alias]) => key === names[i] && alias === label) &&
+          aliases.filter(([, alias]) => alias === label).length === 1;
+        return prefix || linked;
+      });
+    return group.map((entry, i) => ({ ...entry, index: ordered ? i : indices[i] }));
+  });
+}
+
 function tabStats(groups, field, keys) {
   const values = keys.map(() => '');
   let seen = false;
   for (const group of groups) {
-    for (const { name, fields: groupFields } of group) {
+    for (const { index, fields: groupFields } of group) {
       const found = groupFields.get(field);
       if (!found) continue;
       seen = true;
-      const index = keys.findIndex(key => key.toLowerCase() === name.toLowerCase());
-      if (index < 0 || keys.filter(key => key.toLowerCase() === name.toLowerCase()).length > 1) continue;
+      if (index < 0) continue;
       const [value, ...remaining] = found;
       if (remaining.length) continue;
       const text = clean(value).slice(0, 2400);
@@ -134,7 +161,9 @@ export function parseProfile(raw) {
   const keys = splitColumns(fields.get('Key')?.[0]).filter((value, i, all) => value || all.length > 1);
   const tierCells = splitColumns(fields.get('Tier')?.[0]).filter((value, i, all) => value || all.length > 1);
   const aligned = tierCells.length === (keys.length || 1) && fields.get('Tier')?.length === 1;
-  const groups = [...body.matchAll(tabbers)].map(([, block]) => tabsIn(block).map(tab => ({ name: tab.name, fields: readFields(tab.text) })));
+  const portraits = portraitsIn(summary);
+  const tabGroups = [...body.matchAll(tabbers)].map(([, block]) => tabsIn(block).map(tab => ({ name: tab.name, fields: readFields(tab.text) })));
+  const groups = pairedTabs(tabGroups, keys, portraits);
   const stats = {};
   for (const field of STATS) {
     const flat = fields.has(field) ? flatStat(fields.get(field), keys.length) : null;
@@ -142,13 +171,14 @@ export function parseProfile(raw) {
     if (flat || tabbed) stats[field] = flat?.scope === 'keyed' ? flat : tabbed || flat;
   }
   return {
+    mappingVersion: MAPPING_VERSION,
     origin: clean(fields.get('Origin')?.[0] || readFields(summary).get('Origin')?.[0]),
     keys: (keys.length ? keys : ['Profile']).map((name, i) => ({
       name: name || `Key ${i + 1}`, tiers: aligned ? tiersIn(tierCells[i]) : [], rating: aligned ? tierCells[i] : '',
     })),
     tierScope: aligned ? (keys.length ? 'keyed' : 'shared') : tierCells.length ? 'ambiguous' : 'missing',
     stats,
-    portraits: portraitsIn(summary),
+    portraits,
   };
 }
 

@@ -7,7 +7,7 @@ export const escape = (value = '') => String(value).replace(/[&<>"']/g, characte
 export function portrait(title, image) {
   const initials = title.split(/[\s(]+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
   const url = typeof image === 'string' && image.startsWith('https://') ? image : '';
-  return `<span class="portrait"><span aria-hidden="true">${escape(initials)}</span>${url ? `<img src="${escape(url)}" alt="" loading="lazy">` : ''}</span>`;
+  return `<span class="portrait"><span aria-hidden="true">${escape(initials)}</span>${url ? `<img src="${escape(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</span>`;
 }
 
 export function keyOptions(profile, index) {
@@ -97,9 +97,10 @@ export function renderValue({ value, scope }) {
   return text + (scope === 'shared' ? '<span class="scope">Shared profile value</span>' : '');
 }
 
-export function renderTable(sides, hideMissing) {
-  const rows = statRows(sides).filter(({ values }) => !hideMissing || values.some(({ value }) => value));
-  if (!rows.length) return '<p class="empty">None of the selected Keys have mapped values.</p>';
+export function renderTable(sides, hideMissing, differencesOnly = false) {
+  const rows = statRows(sides).filter(({ values: [a, b] }) =>
+    (!hideMissing || a.value || b.value) && (!differencesOnly || a.value !== b.value || a.scope !== b.scope));
+  if (!rows.length) return `<p class="empty">${differencesOnly ? 'No differences match these table filters.' : 'None of the selected Keys have mapped values.'}</p>`;
   return `<table class="stats-table"><thead><tr><th scope="col">Statistic</th>${sides.map(({ profile, key }, i) =>
     `<th scope="col" class="side-${i ? 'b' : 'a'}">${escape(profile.title)}<small>${escape(profile.keys[key].name)}</small></th>`).join('')}</tr></thead>
     <tbody>${rows.map(({ field, values }) => `<tr><th scope="row">${field}</th>${values.map(value => `<td>${renderValue(value)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;

@@ -1,4 +1,4 @@
-import { STATS, TIERS, matchesKey, statAt } from './scaling.mjs';
+import { MAPPING_VERSION, STATS, TIERS, matchesKey, statAt } from './scaling.mjs';
 import { adaptLegacy, getPortrait, getProfile, searchWiki } from './wiki.mjs';
 import { readLibrary, saveLibrary } from './cache.mjs';
 import { comparisonCsv, coverageChart, describeSelection, escape, keyOptions, portrait, portraitOptions, renderTable, renderValue, sourceLinks, tierChart, tierRelationship } from './views.mjs';
@@ -8,6 +8,7 @@ const sides = ['left', 'right'];
 const starterIds = [2443507, 3424600];
 const portraits = new Map();
 const profiles = new Map();
+const revisions = new Map();
 const roster = new Map();
 const slots = [null, null];
 const slotRequests = [0, 0];
@@ -16,6 +17,7 @@ const archiveApp = 'Character Tier Atlas';
 let detail;
 let routeVersion = 0;
 let activeView;
+let openingComparison = false;
 let visibleCount = pageSize;
 let wikiResults = [];
 let exploreRequest;
@@ -30,18 +32,33 @@ function message(id, text = '', error = false) {
 function addProfiles(rows) {
   for (const profile of rows) {
     const current = profiles.get(profile.id);
-    if (!current || current.legacy || (!profile.legacy && (!profile.snapshot || current.snapshot))) profiles.set(profile.id, profile);
+    if (!current || current.legacy || (!profile.legacy && (!profile.snapshot || current.snapshot) &&
+      (profile.mappingVersion === MAPPING_VERSION || current.mappingVersion !== MAPPING_VERSION))) profiles.set(profile.id, profile);
+    if (profile.revision && profile.mappingVersion === MAPPING_VERSION && (!profile.snapshot || !revisions.has(profile.revision))) revisions.set(profile.revision, profile);
     roster.set(profile.id, { id: profile.id, title: profile.title });
   }
 }
 
-async function profileFor(id, refresh = false) {
-  if (!refresh && profiles.has(id)) return profiles.get(id);
-  const profile = await getProfile(id);
-  addProfiles([profile]);
-  if (profile.id !== id) profiles.set(id, profile);
-  saveLibrary(`profile-${profile.id}`, { profiles: [profile] }).catch(() => {});
-  return profile;
+async function profileFor(id, { refresh = false, revision = 0 } = {}) {
+  if (revision) {
+    const cached = revisions.get(revision);
+    if (cached?.id === id) return cached;
+    const profile = await getProfile(id, revision);
+    revisions.set(revision, profile);
+    return profile;
+  }
+  const cached = profiles.get(id);
+  if (!refresh && (cached?.legacy || cached?.mappingVersion === MAPPING_VERSION)) return cached;
+  try {
+    const profile = await getProfile(id);
+    addProfiles([profile]);
+    if (profile.id !== id) profiles.set(id, profile);
+    saveLibrary(`profile-${profile.id}`, { profiles: [profile] }).catch(() => {});
+    return profile;
+  } catch (error) {
+    if (!refresh && cached) return cached;
+    throw error;
+  }
 }
 
 function selection(profile, key = 0, appearance = 0) {
@@ -63,7 +80,7 @@ function portraitField(item, attribute) {
 }
 
 function detailsHash({ profile, key, appearance }) {
-  return `#detail?${new URLSearchParams({ id: profile.id, key, appearance })}`;
+  return `#detail?${new URLSearchParams({ id: profile.id, key, appearance, ...(profile.revision ? { revision: profile.revision } : {}) })}`;
 }
 
 function renderSlot(i) {
@@ -99,10 +116,10 @@ async function loadAppearance(item, container) {
 }
 
 function renderAnalysis() {
-  const ready = slots.every(Boolean);
-  for (const id of ['copyMatch', 'share', 'exportCsv', 'swap']) $(id).disabled = !ready;
+  const ready = slots.every(Boolean) && !openingComparison;
+  for (const id of ['copyMatch', 'share', 'exportCsv', 'swap', 'jumpStats']) $(id).disabled = !ready;
   if (!ready) {
-    $('tierChart').innerHTML = '<p class="empty">Select two characters to see their tier placement.</p>';
+    $('tierChart').innerHTML = `<p class="empty">${openingComparison ? 'Opening linked comparison…' : 'Select two characters to see their tier placement.'}</p>`;
     $('coverageChart').innerHTML = '';
     $('statsTable').innerHTML = '';
     $('tierRelationship').textContent = '';
@@ -111,7 +128,7 @@ function renderAnalysis() {
   $('tierChart').innerHTML = tierChart(slots, $('showScale').checked);
   $('tierRelationship').textContent = tierRelationship(slots);
   $('coverageChart').innerHTML = coverageChart(slots);
-  $('statsTable').innerHTML = renderTable(slots, $('hideMissing').checked);
+  $('statsTable').innerHTML = renderTable(slots, $('hideMissing').checked, $('differencesOnly').checked);
 }
 
 function comparisonHash() {
@@ -123,6 +140,7 @@ function comparisonHash() {
     params.set(side, profile.id);
     params.set(side + 'Key', profile.keys[key].name);
     params.set(side + 'Index', key);
+    if (profile.revision) params.set(side + 'Rev', profile.revision);
     if (appearance) params.set(side + 'Portrait', profile.portraits[appearance - 1].path.join(' / '));
   });
   return `#compare?${params}`;
@@ -147,22 +165,23 @@ function mergedRows(first, second) {
   return [...rows.values()];
 }
 
-async function setSlot(i, id, fromDetail) {
+async function setSlot(i, id, { selected, key = 0, navigate = false } = {}) {
   const request = ++slotRequests[i];
-  if (!fromDetail) message('compareNotice', 'Loading wiki profile…');
+  const notice = navigate && activeView === 'explore' ? 'exploreNotice' : 'compareNotice';
+  if (!selected) message(notice, 'Loading wiki profile…');
   try {
-    const profile = fromDetail?.profile || await profileFor(id);
+    const profile = selected?.profile || await profileFor(id);
     if (request !== slotRequests[i]) return;
-    slots[i] = fromDetail ? { ...fromDetail } : selection(profile);
+    slots[i] = selected ? { ...selected } : selection(profile, key);
     $(sides[i] + 'Query').value = '';
     renderSlot(i);
     renderAnalysis();
-    message('compareNotice');
+    message(notice);
     $('compareManual').hidden = true;
-    if (fromDetail) location.hash = comparisonHash();
+    if (navigate) location.hash = comparisonHash();
     else updateComparisonUrl();
   } catch (error) {
-    if (request === slotRequests[i]) message('compareNotice', error.message, true);
+    if (request === slotRequests[i]) message(notice, error.message, true);
   }
 }
 
@@ -260,20 +279,28 @@ function renderCatalog() {
   const rules = rulesInUse();
   const combine = $('filterCombine').value;
   const library = localMatches(exploreQuery);
-  const rows = rules.length ? library.flatMap(row => {
+  const available = mergedRows(library, wikiResults);
+  const numIndexed = available.filter(row => profiles.has(row.id)).length;
+  $('filterCoverage').hidden = !rules.length;
+  $('filterCoverage').textContent = `${numIndexed} profiles checked · ${available.length - numIndexed} entries need profile data`;
+  const rows = rules.length ? available.flatMap(row => {
     const profile = profiles.get(row.id);
     if (!profile) return [];
     const rulesMatch = profile.keys.flatMap((_, key) => matchesKey(profile, key, rules, combine) ? [key] : []);
     return rulesMatch.length ? [{ ...row, rulesMatch }] : [];
-  }) : mergedRows(library, wikiResults);
+  }) : available;
   $('catalogPaging').hidden = rows.length <= visibleCount;
   $('showMore').textContent = `Show more (${Math.min(visibleCount, rows.length)} of ${rows.length})`;
   $('catalog').innerHTML = rows.slice(0, visibleCount).map(row => {
     const profile = profiles.get(row.id);
     const label = row.rulesMatch ? `${row.rulesMatch.length} matching ${row.rulesMatch.length === 1 ? 'Key' : 'Keys'}` : profile ? `${profile.keys.length} ${profile.keys.length === 1 ? 'Key' : 'Keys'}` : 'Wiki result';
-    const details = `#detail?${new URLSearchParams({ id: row.id, key: row.rulesMatch?.[0] || 0 })}`;
+    const key = row.rulesMatch?.[0] || 0;
+    const details = profile ? detailsHash(selection(profile, key)) : `#detail?${new URLSearchParams({ id: row.id })}`;
+    const matching = row.rulesMatch ? `<p class="meta">${escape(row.rulesMatch.slice(0, 2).map(index => profile.keys[index].name).join(' · '))}${row.rulesMatch.length > 2 ? ' · …' : ''}</p>` : '';
     return `<article class="panel catalog-card"><div class="identity">${portrait(row.title, profile?.image)}<div><h3>${escape(row.title)}</h3><p class="meta">${escape(profile?.origin || label)}</p></div></div>
-      ${profile ? `<p class="meta">${escape(label)}</p>` : ''}<div class="actions"><a class="button secondary" href="${escape(details)}">View details</a></div></article>`;
+      ${profile ? `<div><p class="meta">${escape(label)}</p>${matching}</div>` : ''}<div class="actions"><a class="button secondary" href="${escape(details)}">View details</a>
+      <button type="button" class="button text-button" data-catalog-side="0" data-id="${row.id}" data-key="${key}" aria-label="Use ${escape(row.title)} as A">Use as A</button>
+      <button type="button" class="button text-button" data-catalog-side="1" data-id="${row.id}" data-key="${key}" aria-label="Use ${escape(row.title)} as B">Use as B</button></div></article>`;
   }).join('') || `<p class="empty">${rules.length ? 'No Keys in your library match these rules.' : 'No characters match your search.'}</p>`;
 }
 
@@ -321,7 +348,7 @@ function renderDetail() {
       ${selected.tiers.length ? `<div class="tags" aria-label="Tier ratings">${selected.tiers.map(tier => `<span>${escape(tier)}</span>`).join('')}</div>` : ''}
       <p>${selected.rating ? escape(selected.rating) : selected.tiers.length ? 'Refresh to read the current tier rating text.' : 'No tier rating is mapped to this Key.'}</p>
       <div class="actions"><button type="button" class="button primary" data-detail-copy>Copy selection</button><button type="button" class="button secondary" data-to-slot="0">Use as A</button><button type="button" class="button secondary" data-to-slot="1">Use as B</button></div></section>
-    <section class="panel prose"><h2>Profile information</h2><p>${profile.snapshot ? 'This starter snapshot contains excerpts.' : profile.legacy ? 'This profile was imported from a classic backup.' : 'This profile was read from the wiki revision above.'}</p>
+    <section class="panel prose"><h2>Profile information</h2><p>${profile.snapshot ? 'This starter snapshot comes from the wiki revision above.' : profile.legacy ? 'This profile was imported from a classic backup.' : 'This profile was read from the wiki revision above.'}</p>
       <button type="button" class="button secondary" data-detail-refresh>Refresh from wiki</button>
       ${profile.categories.length ? `<details class="detail-versions"><summary>Wiki categories (${profile.categories.length})</summary><div class="tags">${profile.categories.map(category => `<span>${escape(category)}</span>`).join('')}</div></details>` : ''}</section></div>
     <section class="panel stats-panel"><div class="panel-heading"><h2>Selected Key stats</h2></div><table class="stats-table"><tbody>${STATS.map(field => `<tr><th scope="row">${field}</th><td>${renderValue(statAt(profile, key, field))}</td></tr>`).join('')}</tbody></table></section>`;
@@ -332,13 +359,13 @@ function detailUrl() {
   history.replaceState(null, '', detailsHash(detail));
 }
 
-async function showDetail(id, key, appearance, version) {
+async function showDetail(id, key, appearance, revision, version) {
   detail = null;
   $('detailManual').hidden = true;
   message('detailNotice');
   $('detailContent').innerHTML = '<div class="page-heading"><h1 id="detailTitle">Loading profile</h1></div>';
   try {
-    const profile = await profileFor(id);
+    const profile = await profileFor(id, { revision });
     if (version !== routeVersion) return;
     detail = selection(profile, key, appearance);
     renderDetail();
@@ -361,26 +388,36 @@ async function route() {
     else link.removeAttribute('aria-current');
   }
   const params = new URLSearchParams(query);
+  openingComparison = false;
   if (view === 'explore') renderCatalog();
-  if (view === 'detail') await showDetail(Number(params.get('id')), Number(params.get('key')), Number(params.get('appearance')), version);
+  if (view === 'detail') await showDetail(Number(params.get('id')), Number(params.get('key')), Number(params.get('appearance')), Number(params.get('revision')), version);
   if (view !== 'compare') return;
   if (query) {
+    openingComparison = true;
+    renderAnalysis();
+    message('compareNotice', 'Opening linked comparison…');
     const currentRequests = [...slotRequests];
     const errors = await Promise.all(['a', 'b'].map(async (label, i) => {
       const id = Number(params.get(label));
       if (!id) return '';
       try {
-        const profile = await profileFor(id);
+        const profile = await profileFor(id, { revision: Number(params.get(label + 'Rev')) });
         if (version !== routeVersion || currentRequests[i] !== slotRequests[i]) return '';
         const keyName = params.get(label + 'Key');
         const index = Number(params.get(label + 'Index'));
         const key = profile.keys[index]?.name === keyName ? index : profile.keys.findIndex(item => item.name === keyName);
         const appearance = profile.portraits.findIndex(item => item.path.join(' / ') === params.get(label + 'Portrait')) + 1;
+        if (keyName && key < 0) throw Error(`The linked Key is unavailable for ${profile.title}. Choose a Key for character ${label.toUpperCase()}.`);
         slots[i] = selection(profile, key, appearance);
-        return keyName && key < 0 ? `The linked Key is no longer listed for ${profile.title}.` : '';
-      } catch (error) { return error.message; }
+        return params.has(label + 'Portrait') && !appearance ? `The linked appearance is unavailable for ${profile.title}.` : '';
+      } catch (error) {
+        if (version !== routeVersion || currentRequests[i] !== slotRequests[i]) return '';
+        slots[i] = null;
+        return error.message;
+      }
     }));
     if (version !== routeVersion) return;
+    openingComparison = false;
     message('compareNotice', errors.filter(Boolean).join(' '), errors.some(Boolean));
   }
   sides.forEach((_, i) => renderSlot(i));
@@ -421,6 +458,11 @@ async function init() {
   $('exportCsv').addEventListener('click', () => download('character-tier-comparison.csv', comparisonCsv(slots), 'text/csv;charset=utf-8'));
   $('showScale').addEventListener('change', renderAnalysis);
   $('hideMissing').addEventListener('change', renderAnalysis);
+  $('differencesOnly').addEventListener('change', renderAnalysis);
+  $('jumpStats').addEventListener('click', () => {
+    $('statsTitle').focus({ preventScroll: true });
+    $('statsTitle').scrollIntoView({ block: 'start' });
+  });
   $('swap').addEventListener('click', () => {
     slots.reverse();
     sides.forEach((_, i) => { slotRequests[i]++; renderSlot(i); });
@@ -431,6 +473,10 @@ async function init() {
   $('exploreSearch').addEventListener('submit', exploreSearch);
   $('exploreQuery').addEventListener('search', event => { if (!event.target.value) exploreSearch(event); });
   $('showMore').addEventListener('click', () => { visibleCount += pageSize; renderCatalog(); });
+  $('catalog').addEventListener('click', event => {
+    const button = event.target.closest('[data-catalog-side]');
+    if (button) setSlot(Number(button.dataset.catalogSide), Number(button.dataset.id), { key: Number(button.dataset.key), navigate: true });
+  });
   $('addRule').addEventListener('click', addRule);
   $('clearRules').addEventListener('click', () => { $('rules').replaceChildren(); renderCatalog(); message('exploreNotice'); });
   $('filterRules').addEventListener('submit', event => { event.preventDefault(); renderCatalog(); });
@@ -482,14 +528,14 @@ async function init() {
     const button = event.target.closest('button');
     if (!button || !detail) return;
     if (button.matches('[data-detail-copy]')) copy(describeSelection(detail), 'detailNotice', 'detailManual');
-    if (button.matches('[data-to-slot]')) setSlot(Number(button.dataset.toSlot), detail.profile.id, detail);
+    if (button.matches('[data-to-slot]')) setSlot(Number(button.dataset.toSlot), detail.profile.id, { selected: detail, navigate: true });
     if (button.matches('[data-detail-refresh]')) {
       const current = detail;
       const version = routeVersion;
       button.disabled = true;
       message('detailNotice', 'Refreshing wiki profile…');
       try {
-        const profile = await profileFor(current.profile.id, true);
+        const profile = await profileFor(current.profile.id, { refresh: true });
         if (version !== routeVersion || detail !== current) return;
         const key = profile.keys.findIndex(item => item.name === current.profile.keys[current.key].name);
         const appearance = profile.portraits.findIndex(item => item.file === current.profile.portraits[current.appearance - 1]?.file) + 1;
