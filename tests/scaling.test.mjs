@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { matchesKey, parseProfile, statAt } from '../src/scaling.mjs';
 import { adaptLegacy, getProfile, toProfile } from '../src/wiki.mjs';
-import { comparisonCsv, describeSelection, renderTable, tierChart, tierRelationship } from '../src/views.mjs';
+import { comparisonCsv, describeSelection, portrait, renderTable, tierChart, tierRelationship } from '../src/views.mjs';
 
 test('reads top-level columns, preserves gaps and does not flatten ratings', () => {
   const profile = parseProfile(`==Powers and Stats==
@@ -73,6 +73,12 @@ test('requests a pinned revision and rejects a response for the wrong revision',
   assert.equal(requestUrl.searchParams.get('revids'), '17');
   assert.equal(requestUrl.searchParams.has('pageids'), false);
   await assert.rejects(getProfile(42, 18), /Wiki revision 18 is unavailable/);
+});
+
+test('renders a small wiki thumbnail with no referrer', () => {
+  const markup = portrait('Son Goku', 'https://static.wikia.nocookie.net/vsbattles/images/goku.png/revision/latest/scale-to-width-down/320?cb=1');
+  assert.match(markup, /scale-to-width-down\/160\?cb=1/);
+  assert.match(markup, /referrerpolicy="no-referrer"/);
 });
 
 test('imports classic backups with only attributable stats', () => {

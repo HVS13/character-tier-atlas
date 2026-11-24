@@ -6,7 +6,10 @@ export const escape = (value = '') => String(value).replace(/[&<>"']/g, characte
 
 export function portrait(title, image) {
   const initials = title.split(/[\s(]+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
-  const url = typeof image === 'string' && image.startsWith('https://') ? image : '';
+  const url = typeof image === 'string' && image.startsWith('https://')
+    ? image.replace(/^(https:\/\/static\.wikia\.nocookie\.net\/[^?]+\/scale-to-width-down\/)\d+(?=\?|$)/,
+        (_, prefix) => `${prefix}160`)
+    : '';
   return `<span class="portrait"><span aria-hidden="true">${escape(initials)}</span>${url ? `<img src="${escape(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</span>`;
 }
 
