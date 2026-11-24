@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+import { matchesKey, parseProfile, statAt } from '../src/scaling.mjs';
+import { adaptLegacy, toProfile } from '../src/wiki.mjs';
+import { comparisonCsv, describeSelection, tierChart, tierRelationship } from '../src/views.mjs';
+
+test('reads top-level columns, preserves gaps and does not flatten ratings', () => {
+  const profile = parseProfile(`==Powers and Stats==
+'''[[Tiering System|Tier]]:''' {{8-C}} | At least {{7-A}}, possibly {{6-C}} | {{2-C}}
+'''Key:''' [[Test|Base]] | [[World|Next]] | Last
+'''[[Speed]]:''' Old <ref>link|ref</ref> | | New
+'''Range:''' [[Distance|3 m]]
+'''Attack Potency:''' Rating | Ambiguous
+==Notes==
+'''Speed:''' This section does not contain stats.`);
+  assert.deepEqual(profile.keys.map(key => key.name), ['Base', 'Next', 'Last']);
+  assert.deepEqual(profile.keys[1].tiers, ['7-A', '6-C']);
+  assert.equal(statAt(profile, 0, 'Speed').value, 'Old');
+  assert.equal(statAt(profile, 1, 'Speed').scope, 'missing');
+  assert.equal(statAt(profile, 2, 'Speed').value, 'New');
+  assert.equal(statAt(profile, 0, 'Range').scope, 'shared');
+  assert.equal(statAt(profile, 1, 'Attack Potency').scope, 'ambiguous');
+  assert.equal(matchesKey(profile, 0, [{ field: 'Tier', value: '8-C' }, { field: 'Speed', value: 'New' }], 'all'), false);
+  assert.equal(matchesKey(profile, 2, [{ field: 'Tier', value: '8-C' }, { field: 'Speed', value: 'New' }], 'any'), true);
+});
+
+test('maps repeated stat tabs by exact Key label and keeps unmatched fields off each Key', () => {
+  const { stats, portraits } = parseProfile(`<tabber>
+Base=[[File:base.png]]
+|-|Second=[[File:second.png]]
+</tabber>
+== Powers and Stats ==
+'''Tier:''' {{7-A}} | {{6-B}} | {{4-B}}
+'''Key:''' Base | Second | Third
+<tabber>
+Third='''[[Speed]]:''' Third speed
+|-|Base=
+'''[[Speed]]:''' Base speed
+|-|Second and Third='''Speed:''' Mixed speed
+</tabber>`);
+  assert.deepEqual(stats.Speed, { scope: 'keyed', parts: ['Base speed', '', 'Third speed'] });
+  assert.deepEqual(portraits.map(item => item.path), [['Base'], ['Second']]);
+});
+
+test('rejects an unparsed redirect as a character profile', () => {
+  assert.throws(() => toProfile({ revisions: [{ slots: { main: { content: '#REDIRECT [[A]]' } } }] }), /no readable/);
+});
+
+test('imports classic backups with only attributable stats', () => {
+  const { profiles } = adaptLegacy({ app: 'VS Battles Character Explorer', format: 1,
+    index: { pages: [{ pageid: 13, title: 'Character' }] }, profiles: { 13: {
+      origin: 'Test', keys: ['Base', 'Final'], tierStatus: 'aligned', variants: [{ tiers: ['8-A'] }, { tiers: ['7-A'] }],
+      stats: { Speed: { scope: 'shared', parts: ['Example'] }, Range: { aligned: true, parts: ['Short', 'Long'] } },
+    } },
+  });
+  assert.equal(statAt(profiles[0], 1, 'Range').value, 'Long');
+  assert.equal(statAt(profiles[0], 1, 'Speed').scope, 'ambiguous');
+});
+
+test('renders starter data with separate tier categories and exports selected Keys', async () => {
+  const [a, b] = JSON.parse(await readFile(new URL('../src/starter.json', import.meta.url), 'utf8'));
+  const sides = [{ profile: a, key: 0, appearance: 0 }, { profile: b, key: 0, appearance: 0 }];
+  assert.equal(tierRelationship(sides), 'Shared rating: 4-B');
+  assert.match(tierChart(sides, false), /2-C.+placed/s);
+  assert.match(tierChart(sides, true), />11-C</);
+  assert.match(comparisonCsv(sides), /Son Goku \(DBS Manga\) \(Battle of Gods\)/);
+  assert.match(comparisonCsv(sides), /Special:PermanentLink/);
+  assert.match(describeSelection({ ...sides[0], appearance: 1 }), /Appearance:/);
+});

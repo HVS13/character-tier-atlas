@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Compare exact character versions, read their stats, and trace their ratings to the source.">
+  <meta name="theme-color" content="#10151f">
+  <title>Character Tier Atlas</title>
+  <link rel="stylesheet" href="./src/styles.css">
+  <script type="module" src="./src/app.mjs"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="frame header-inner">
+      <a class="brand" href="#compare"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Character Tier Atlas</a>
+      <nav aria-label="Main navigation">
+        <a href="#compare" data-nav="compare">Compare</a>
+        <a href="#explore" data-nav="explore">Explore</a>
+        <a href="#sources" data-nav="sources">Sources</a>
+      </nav>
+    </div>
+  </header>
+  <main class="frame main">
+    <section id="compareView" aria-labelledby="compareTitle">
+      <div class="page-heading">
+        <div><h1 id="compareTitle">Character comparison</h1><p>Choose two characters and the exact Keys you want to compare.</p></div>
+        <div class="actions">
+          <button class="button secondary" type="button" id="share">Share link</button>
+          <button class="button primary" type="button" id="copyMatch">Copy comparison</button>
+        </div>
+      </div>
+      <div class="selection-grid">
+        <section class="panel selection side-a" aria-labelledby="leftLabel">
+          <div class="selection-head"><h2 id="leftLabel"><span class="series-dot"></span>Character A</h2><a id="leftDetail" href="#explore" class="quiet-link">View details</a></div>
+          <form class="character-search" id="leftSearch" role="search">
+            <label class="sr-only" for="leftQuery">Find character A</label>
+            <input id="leftQuery" type="search" autocomplete="off" placeholder="Find a character">
+            <button type="submit" class="button secondary">Find</button>
+            <div id="leftResults" class="search-results" hidden></div>
+          </form>
+          <div id="leftCard" class="selection-body"></div>
+        </section>
+        <section class="panel selection side-b" aria-labelledby="rightLabel">
+          <div class="selection-head"><h2 id="rightLabel"><span class="series-dot"></span>Character B</h2><a id="rightDetail" href="#explore" class="quiet-link">View details</a></div>
+          <form class="character-search" id="rightSearch" role="search">
+            <label class="sr-only" for="rightQuery">Find character B</label>
+            <input id="rightQuery" type="search" autocomplete="off" placeholder="Find a character">
+            <button type="submit" class="button secondary">Find</button>
+            <div id="rightResults" class="search-results" hidden></div>
+          </form>
+          <div id="rightCard" class="selection-body"></div>
+        </section>
+      </div>
+      <div class="selection-toolbar">
+        <p id="compareNotice" class="notice" role="status"></p>
+        <button type="button" class="button text-button" id="swap">Swap sides</button>
+      </div>
+      <textarea id="compareManual" class="manual" rows="2" aria-label="Selection to copy" readonly hidden></textarea>
+      <div class="analysis-grid">
+        <section class="panel analysis-panel" aria-labelledby="tierTitle">
+          <div class="panel-heading"><div><h2 id="tierTitle">Tier placement</h2><p>Ratings in VS Battles Wiki order</p></div><label class="check"><input id="showScale" type="checkbox"> Full scale</label></div>
+          <div id="tierChart"></div>
+          <p id="tierRelationship" class="tier-relationship"></p>
+          <p class="chart-note">A tier is an ordered category. Distance between tiers does not measure power.</p>
+        </section>
+        <section class="panel analysis-panel" aria-labelledby="coverageTitle">
+          <div class="panel-heading"><div><h2 id="coverageTitle">Stat coverage</h2><p>Fields available for the selected Keys</p></div></div>
+          <div id="coverageChart"></div>
+          <p class="chart-note">Shared fields apply at profile level. Unmapped fields stay out of the counts.</p>
+        </section>
+      </div>
+      <section class="panel stats-panel" aria-labelledby="statsTitle">
+        <div class="panel-heading"><div><h2 id="statsTitle">Stats side by side</h2><p>Open a value for the full text available here.</p></div><div class="actions"><label class="check"><input id="hideMissing" type="checkbox"> Hide empty rows</label><button id="exportCsv" class="button secondary" type="button">Download CSV</button></div></div>
+        <div id="statsTable"></div>
+      </section>
+    </section>
+    <section id="exploreView" aria-labelledby="exploreTitle" hidden>
+      <div class="page-heading"><div><h1 id="exploreTitle">Explore characters</h1><p>Search the wiki or look through the profiles in your library.</p></div></div>
+      <form id="exploreSearch" class="explore-search" role="search">
+        <label for="exploreQuery" class="sr-only">Search characters</label><input id="exploreQuery" type="search" placeholder="Character or franchise" autocomplete="off">
+        <button type="submit" class="button primary">Search wiki</button>
+      </form>
+      <div class="explore-tools">
+        <details class="panel filters">
+          <summary>Filter library by Key</summary>
+          <form id="filterRules">
+            <label class="field">Match <select id="filterCombine"><option value="all">All rules (AND)</option><option value="any">Any rule (OR)</option></select></label>
+            <div id="rules"></div>
+            <div class="actions"><button type="button" class="button secondary" id="addRule">Add rule</button><button type="button" class="button text-button" id="clearRules">Clear rules</button></div>
+          </form>
+        </details>
+        <div class="actions library-actions"><button class="button secondary" type="button" id="importButton">Import backup</button><button class="button text-button" type="button" id="exportLibrary">Export library</button><input type="file" id="importFile" accept="application/json,.json" hidden></div>
+      </div>
+      <p id="exploreNotice" class="notice" role="status"></p>
+      <div id="catalog" class="catalog"></div>
+      <div id="catalogPaging" class="actions paging" hidden><button class="button secondary" type="button" id="showMore">Show more</button></div>
+    </section>
+    <section id="detailView" aria-labelledby="detailTitle" hidden>
+      <a href="#explore" class="quiet-link">Back to Explore</a>
+      <div id="detailContent"></div>
+      <p class="notice" id="detailNotice" role="status"></p>
+      <textarea class="manual" id="detailManual" rows="2" aria-label="Selection to copy" readonly hidden></textarea>
+    </section>
+    <section id="sourcesView" aria-labelledby="sourcesTitle" hidden>
+      <div class="page-heading"><div><h1 id="sourcesTitle">Sources and method</h1><p>Check the evidence behind a rating and how Atlas maps it to a Key.</p></div></div>
+      <div class="source-grid">
+        <article class="panel prose"><h2>VS Battles Wiki</h2><p>Atlas uses its character profiles and tier system. Compare shows the wiki revision when available. Starter profiles contain excerpts. Refresh a profile for the latest text the API exposes.</p><a href="https://vsbattles.fandom.com/wiki/Tiering_System">Read the tier definitions</a><a href="https://vsbattles.fandom.com/wiki/Standard_Format_for_Character_Profiles">Read the profile standard</a><a href="https://creativecommons.org/licenses/by-sa/3.0/">Wiki text license (CC BY-SA 3.0)</a></article>
+        <article class="panel prose"><h2>Canon evidence</h2><p>Original works and publisher material can establish what happened in a specific continuity. Atlas links to selected official sources where available.</p><a href="https://en.dragon-ball-official.com/news/01_1574.html">Dragon Ball official manga recap</a><a href="https://www.marvel.com/characters/spider-man-peter-parker/in-comics">Marvel’s Spider-Man profile</a></article>
+        <article class="panel prose"><h2>Other community scales</h2><p>Character Stats and Profiles Wiki allows multiple editors’ versions of the same character. Power Scaling Wiki defines its own scale. Read their ratings in the context of each wiki’s rules.</p><a href="https://character-stats-and-profiles.fandom.com/wiki/Rules_and_Guidelines">Character Stats and Profiles Wiki rules</a><a href="https://psbattles.fandom.com/wiki/Tiering_System">Power Scaling Wiki tiers</a></article>
+        <article class="panel prose"><h2>Key mapping</h2><p>A Key is the wiki’s named edition, era, or form. Atlas maps parallel columns by position and stat tabs by matching labels. It marks fields shared across Keys and leaves ambiguous fields unmapped. The tier chart shows each explicit rating for a Key.</p><a href="https://vsbattles.fandom.com/wiki/Editing_Rules">Read the wiki’s evidence rules</a></article>
+      </div>
+      <section class="panel prose classic"><h2>Classic explorer</h2><p>The classic app still handles full roster indexing, incremental updates, and nested rule groups. Export a classic cache there and import it into Atlas to bring your library across.</p><a href="./legacy/">Open classic explorer</a></section>
+    </section>
+    <noscript>Enable JavaScript to search characters and compare Keys.</noscript>
+  </main>
+  <footer class="frame site-footer"><span>Character Tier Atlas</span><a href="#sources">Sources and method</a><a href="https://github.com/HVS13/character-tier-atlas">GitHub</a></footer>
+</body>
+</html>
