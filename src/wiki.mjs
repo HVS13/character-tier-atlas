@@ -1,4 +1,4 @@
-import { parseProfile, STATS } from './scaling.mjs';
+import { parseProfile, STATS } from './scaling.mjs?v=2';
 
 export const WIKI = 'https://vsbattles.fandom.com';
 export const wikiPage = title => `${WIKI}/wiki/${encodeURIComponent(title.replaceAll(' ', '_'))}`;

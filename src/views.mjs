@@ -1,5 +1,5 @@
-import { STATS, TIERS, statAt, tierPosition } from './scaling.mjs';
-import { canonLinks, wikiPage, wikiRevision } from './wiki.mjs';
+import { STATS, TIERS, statAt, tierPosition } from './scaling.mjs?v=2';
+import { canonLinks, wikiPage, wikiRevision } from './wiki.mjs?v=2';
 
 const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export const escape = (value = '') => String(value).replace(/[&<>"']/g, character => entities[character]);

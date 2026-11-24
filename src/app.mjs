@@ -1,7 +1,7 @@
-import { MAPPING_VERSION, STATS, TIERS, matchesKey, statAt } from './scaling.mjs';
-import { adaptLegacy, getPortrait, getProfile, searchWiki } from './wiki.mjs';
+import { MAPPING_VERSION, STATS, TIERS, matchesKey, statAt } from './scaling.mjs?v=2';
+import { adaptLegacy, getPortrait, getProfile, searchWiki } from './wiki.mjs?v=2';
 import { readLibrary, saveLibrary } from './cache.mjs';
-import { comparisonCsv, coverageChart, describeSelection, escape, keyOptions, portrait, portraitOptions, renderTable, renderValue, sourceLinks, tierChart, tierRelationship } from './views.mjs';
+import { comparisonCsv, coverageChart, describeSelection, escape, keyOptions, portrait, portraitOptions, renderTable, renderValue, sourceLinks, tierChart, tierRelationship } from './views.mjs?v=2';
 
 const $ = id => document.getElementById(id);
 const sides = ['left', 'right'];
@@ -426,7 +426,7 @@ async function route() {
 
 async function init() {
   try {
-    const response = await fetch(new URL('./starter.json', import.meta.url));
+    const response = await fetch(new URL('./starter.json?v=2', import.meta.url));
     if (!response.ok) throw Error('Starter profiles did not load.');
     addProfiles(await response.json());
   } catch (error) { message('compareNotice', error.message, true); }
