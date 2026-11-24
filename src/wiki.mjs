@@ -75,8 +75,23 @@ export async function getPortrait(file) {
   return data.query?.pages?.[0]?.imageinfo?.[0]?.thumburl || '';
 }
 
+export function isCharacterIndex(index) {
+  return index?.source === 'Category:Characters' &&
+    (index.checkedAt == null || Number.isFinite(Date.parse(index.checkedAt))) &&
+    Array.isArray(index.pages) && index.pages.length > 0 &&
+    index.pages.every(page => Array.isArray(page) && Number.isInteger(page[0]) && page[0] > 0 && typeof page[1] === 'string' && page[1].length > 0);
+}
+
+export function classicDirectory(index) {
+  if (index?.complete !== true || !Array.isArray(index.pages) || !index.pages.length ||
+    !index.pages.every(page => page?.ns === 0 && Number.isInteger(page.pageid) && page.pageid > 0 && typeof page.title === 'string' && page.title.length)) return null;
+  const date = new Date(Number(index.checkedAt || index.at || index.builtAt));
+  return { source: 'Category:Characters', checkedAt: Number.isFinite(+date) ? date.toISOString() : null,
+    pages: index.pages.map(({ pageid, title }) => [pageid, title]) };
+}
+
 export function adaptLegacy(backup) {
-  if (backup.app !== 'VS Battles Character Explorer' || backup.format !== 1 || !Array.isArray(backup.index?.pages)) {
+  if (backup?.app !== 'VS Battles Character Explorer' || backup.format !== 1 || !Array.isArray(backup.index?.pages)) {
     throw Error('Choose a cache backup from the classic explorer.');
   }
   const rows = backup.index.pages.filter(page => Number.isInteger(page?.pageid) && page.pageid > 0 && typeof page.title === 'string');
@@ -102,5 +117,5 @@ export function adaptLegacy(backup) {
       categories: Array.isArray(backup.compareCategories?.[id]) ? backup.compareCategories[id].map(value => String(value).replace(/^Category:/, '')) : [],
     }];
   });
-  return { roster, profiles };
+  return { roster, profiles, directory: classicDirectory(backup.index) };
 }

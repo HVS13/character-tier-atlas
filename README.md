@@ -20,4 +20,4 @@ Explore loads a snapshot of every article in the wiki’s [Characters category](
 
 Atlas treats tiers as ordered categories. It preserves multiple ratings in the same Key and keeps unknown fields out of the comparison. Use the [wiki’s tier definitions](https://vsbattles.fandom.com/wiki/Tiering_System) to interpret the scale.
 
-Explore can import the classic explorer’s cache and export your Atlas library. The classic app remains available at `/legacy/` relative to the site root.
+Use **Export backup** in Explore to save the complete index, your library, and cached profiles as one JSON file. Atlas can import that file or a classic explorer backup. If Atlas has no saved index yet, it can reuse one stored by the classic app on the same site. To transfer data from a local single HTML file, export its cache and import that backup into Atlas. The classic app remains available at `/legacy/` relative to the site root.

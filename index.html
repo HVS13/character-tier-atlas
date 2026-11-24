@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#10151f">
   <title>Character Tier Atlas</title>
   <link rel="stylesheet" href="./src/styles.css?v=3">
-  <script type="module" src="./src/app.mjs?v=3"></script>
+  <script type="module" src="./src/app.mjs?v=4"></script>
 </head>
 <body>
   <header class="masthead">
@@ -96,7 +96,7 @@
             <div class="actions"><button type="button" class="button secondary" id="addRule">Add rule</button><button type="button" class="button text-button" id="clearRules">Clear rules</button></div>
           </form>
         </details>
-        <div class="actions library-actions"><button class="button secondary" type="button" id="importButton">Import backup</button><button class="button text-button" type="button" id="exportLibrary">Export library</button><input type="file" id="importFile" accept="application/json,.json" hidden></div>
+        <div class="actions library-actions"><button class="button secondary" type="button" id="importButton">Import backup</button><button class="button text-button" type="button" id="exportLibrary">Export backup</button><input type="file" id="importFile" accept="application/json,.json" hidden></div>
       </div>
       <p id="exploreNotice" class="notice" role="status"></p>
       <p id="filterCoverage" class="notice" role="status" hidden></p>
@@ -118,7 +118,7 @@
         <article class="panel prose"><h2>Other community scales</h2><p>Character Stats and Profiles Wiki allows multiple editors’ versions of the same character. Power Scaling Wiki defines its own scale. Read their ratings in the context of each wiki’s rules.</p><a href="https://character-stats-and-profiles.fandom.com/wiki/Rules_and_Guidelines">Character Stats and Profiles Wiki rules</a><a href="https://psbattles.fandom.com/wiki/Tiering_System">Power Scaling Wiki tiers</a></article>
         <article class="panel prose"><h2>Key mapping</h2><p>A Key is the wiki’s named edition, era, or form. Atlas maps parallel columns by position. It uses exact tab labels and confirmed aliases in complete, ordered tab sets. It marks shared fields and leaves uncertain fields unmapped.</p><a href="https://vsbattles.fandom.com/wiki/Editing_Rules">Read the wiki’s evidence rules</a></article>
       </div>
-      <section class="panel prose classic"><h2>Classic explorer</h2><p>Use the classic app for incremental wiki updates and nested rule groups. Export a classic cache there and import it into Atlas to bring your library across.</p><a href="./legacy/">Open classic explorer</a></section>
+      <section class="panel prose classic"><h2>Classic explorer</h2><p>Atlas can reuse a classic index stored on this site. To move an index and cached profiles from a single HTML file or another browser, export a classic backup and import it in Explore.</p><a href="./legacy/">Open classic explorer</a></section>
     </section>
     <noscript>Enable JavaScript to search characters and compare Keys.</noscript>
   </main>

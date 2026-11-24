@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { matchesKey, parseProfile, statAt } from '../src/scaling.mjs';
-import { adaptLegacy, getCharacterIndex, getProfile, toProfile } from '../src/wiki.mjs';
+import { adaptLegacy, getCharacterIndex, getProfile, isCharacterIndex, toProfile } from '../src/wiki.mjs';
 import { comparisonCsv, describeSelection, portrait, renderTable, tierChart, tierRelationship } from '../src/views.mjs';
 
 test('reads top-level columns, preserves gaps and does not flatten ratings', () => {
@@ -106,14 +106,18 @@ test('ships the character directory separately from starter stat profiles', asyn
 });
 
 test('imports classic backups with only attributable stats', () => {
-  const { profiles } = adaptLegacy({ app: 'VS Battles Character Explorer', format: 1,
-    index: { pages: [{ pageid: 13, title: 'Character' }] }, profiles: { 13: {
+  const { profiles, directory } = adaptLegacy({ app: 'VS Battles Character Explorer', format: 1,
+    index: { complete: true, checkedAt: Date.parse('2026-11-24T01:00:00Z'), pages: [{ pageid: 13, ns: 0, title: 'Character' }] }, profiles: { 13: {
       origin: 'Test', keys: ['Base', 'Final'], tierStatus: 'aligned', variants: [{ tiers: ['8-A'] }, { tiers: ['7-A'] }],
       stats: { Speed: { scope: 'shared', parts: ['Example'] }, Range: { aligned: true, parts: ['Short', 'Long'] } },
     } },
   });
   assert.equal(statAt(profiles[0], 1, 'Range').value, 'Long');
   assert.equal(statAt(profiles[0], 1, 'Speed').scope, 'ambiguous');
+  assert.deepEqual(directory.pages, [[13, 'Character']]);
+  assert.equal(directory.checkedAt, '2026-11-24T01:00:00.000Z');
+  assert(isCharacterIndex(directory));
+  assert(!isCharacterIndex({ ...directory, pages: [[0, 'Invalid page']] }));
 });
 
 test('renders starter data with separate tier categories and exports selected Keys', async () => {

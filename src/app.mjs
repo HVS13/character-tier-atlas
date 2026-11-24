@@ -1,6 +1,6 @@
 import { MAPPING_VERSION, STATS, TIERS, matchesKey, statAt } from './scaling.mjs?v=2';
-import { adaptLegacy, getCharacterIndex, getPortrait, getProfile, searchWiki, wikiPage } from './wiki.mjs?v=3';
-import { readLibrary, saveLibrary } from './cache.mjs';
+import { adaptLegacy, getCharacterIndex, getPortrait, getProfile, isCharacterIndex, searchWiki, wikiPage } from './wiki.mjs?v=4';
+import { readClassicDirectory, readLibrary, saveLibrary } from './cache.mjs?v=4';
 import { comparisonCsv, coverageChart, describeSelection, escape, keyOptions, portrait, portraitOptions, renderTable, renderValue, sourceLinks, tierChart, tierRelationship } from './views.mjs?v=2';
 
 const $ = id => document.getElementById(id);
@@ -35,13 +35,13 @@ function message(id, text = '', error = false) {
 }
 
 function useDirectory(index) {
-  if (index.source !== 'Category:Characters' || !index.pages?.length) throw Error('The character index is unavailable.');
+  if (!isCharacterIndex(index)) throw Error('The character index is unavailable.');
   const pages = [...index.pages].sort((a, b) => collator.compare(a[1], b[1]));
   directory.clear();
   for (const [id, title] of pages) directory.set(id, { id, title, searchTitle: title.toLowerCase() });
   cachedDirectory = index;
-  const date = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(index.checkedAt));
-  message('directoryStatus', `${formatCount(directory.size)} character pages in the index · ${date}`);
+  const date = index.checkedAt ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(index.checkedAt)) : '';
+  message('directoryStatus', `${formatCount(directory.size)} character ${directory.size === 1 ? 'page' : 'pages'} in the index${date ? ` · ${date}` : ''}`);
   $('randomCharacter').disabled = false;
   if (activeView === 'explore') renderCatalog();
 }
@@ -56,13 +56,18 @@ function loadDirectory(refresh = false) {
       if (refresh) {
         const index = await getCharacterIndex(count => message('directoryStatus', `Refreshing the wiki index · ${formatCount(count)} pages found`));
         useDirectory(index);
-        try { await saveLibrary('directory', { directory: index }); }
+        try { await saveLibrary({ directory: { directory: index } }); }
         catch { message('directoryStatus', `${formatCount(directory.size)} character pages loaded for this session. Browser storage is unavailable.`, true); }
       } else if (cachedDirectory) useDirectory(cachedDirectory);
       else {
-        const response = await fetch(new URL('./roster.json?v=1', import.meta.url));
-        if (!response.ok) throw Error('The character index did not load.');
-        useDirectory(await response.json());
+        const classic = await readClassicDirectory();
+        if (classic) useDirectory(classic);
+        else {
+          const response = await fetch(new URL('./roster.json?v=1', import.meta.url));
+          if (!response.ok) throw Error('The character index did not load.');
+          useDirectory(await response.json());
+        }
+        saveLibrary({ directory: { directory: cachedDirectory } }).catch(() => {});
       }
     } catch {
       message('directoryStatus', directory.size
@@ -99,7 +104,7 @@ async function profileFor(id, { refresh = false, revision = 0 } = {}) {
     const profile = await getProfile(id);
     addProfiles([profile]);
     if (profile.id !== id) profiles.set(id, profile);
-    saveLibrary(`profile-${profile.id}`, { profiles: [profile] }).catch(() => {});
+    saveLibrary({ [`profile-${profile.id}`]: { profiles: [profile] } }).catch(() => {});
     return profile;
   } catch (error) {
     if (!refresh && cached) return cached;
@@ -502,7 +507,7 @@ async function init() {
   } catch (error) { message('compareNotice', error.message, true); }
   try {
     for (const library of await readLibrary()) {
-      if (library.directory) { cachedDirectory = library.directory; continue; }
+      if (isCharacterIndex(library.directory)) { cachedDirectory = library.directory; continue; }
       (library.roster || []).forEach(row => roster.set(row.id, row));
       addProfiles(library.profiles);
     }
@@ -581,24 +586,40 @@ async function init() {
   $('importFile').addEventListener('change', async event => {
     const file = event.target.files[0];
     if (!file) return;
+    $('importButton').disabled = true;
     try {
       const backup = JSON.parse(await file.text());
-      const library = backup.app === archiveApp && backup.format === 1 && Array.isArray(backup.roster) && Array.isArray(backup.profiles)
+      const library = backup?.app === archiveApp && backup.format === 1 && Array.isArray(backup.roster) && Array.isArray(backup.profiles)
         ? backup : adaptLegacy(backup);
+      if (library.directory != null && !isCharacterIndex(library.directory)) throw Error('This backup contains an invalid character index.');
       if (!library.profiles.every(profile => Number.isInteger(profile?.id) && typeof profile.title === 'string' && profile.keys?.length && profile.stats && Array.isArray(profile.portraits) && Array.isArray(profile.categories))) throw Error('This backup contains an invalid profile.');
+      if (directoryTask) await directoryTask;
       for (const row of library.roster) if (Number.isInteger(row?.id) && typeof row.title === 'string') roster.set(row.id, row);
       addProfiles(library.profiles);
+      catalogPage = 1;
+      if (library.directory) useDirectory(library.directory);
       renderCatalog();
       try {
-        await saveLibrary('imported', { roster: [...roster.values()], profiles: [...new Set(profiles.values())] });
-        message('exploreNotice', `Imported ${library.roster.length} character entries and ${library.profiles.length} profiles.`);
+        await saveLibrary({ imported: { roster: [...roster.values()], profiles: [...new Set(profiles.values())] },
+          ...(library.directory ? { directory: { directory: cachedDirectory } } : {}) });
+        const status = library.directory ? `Restored the ${formatCount(directory.size)}-page index` : `Imported ${formatCount(library.roster.length)} library entries`;
+        message('exploreNotice', `${status} and ${formatCount(library.profiles.length)} cached ${library.profiles.length === 1 ? 'profile' : 'profiles'}.`);
       } catch { message('exploreNotice', 'Backup loaded for this session. Browser storage is unavailable.', true); }
     } catch (error) { message('exploreNotice', error.message, true); }
-    finally { event.target.value = ''; }
+    finally { event.target.value = ''; $('importButton').disabled = false; }
   });
-  $('exportLibrary').addEventListener('click', () => download('character-tier-atlas-library.json', JSON.stringify({
-    app: archiveApp, format: 1, roster: [...roster.values()], profiles: [...new Set(profiles.values())],
-  }), 'application/json'));
+  $('exportLibrary').addEventListener('click', async () => {
+    $('exportLibrary').disabled = true;
+    try {
+      if (!cachedDirectory) await loadDirectory();
+      if (!cachedDirectory) { message('exploreNotice', 'Load the character index before exporting a backup.', true); return; }
+      const cachedProfiles = [...new Set(profiles.values())];
+      download('character-tier-atlas-backup.json', JSON.stringify({ app: archiveApp, format: 1,
+        directory: cachedDirectory, roster: [...roster.values()], profiles: cachedProfiles,
+      }), 'application/json');
+      message('exploreNotice', `Exported a backup with ${formatCount(directory.size)} character pages and ${formatCount(cachedProfiles.length)} cached profiles.`);
+    } finally { $('exportLibrary').disabled = false; }
+  });
   $('detailContent').addEventListener('change', event => {
     const control = event.target.matches('[data-detail-key]') ? 'key' : 'appearance';
     detail[control] = Number(event.target.value);
