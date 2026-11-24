@@ -6,24 +6,24 @@
   <meta name="description" content="Compare exact character versions, read their stats, and trace their ratings to the source.">
   <meta name="theme-color" content="#10151f">
   <title>Character Tier Atlas</title>
-  <link rel="stylesheet" href="./src/styles.css?v=2">
-  <script type="module" src="./src/app.mjs?v=2"></script>
+  <link rel="stylesheet" href="./src/styles.css?v=3">
+  <script type="module" src="./src/app.mjs?v=3"></script>
 </head>
 <body>
   <header class="masthead">
     <div class="frame header-inner">
-      <a class="brand" href="#compare"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Character Tier Atlas</a>
+      <a class="brand" href="#explore"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Character Tier Atlas</a>
       <nav aria-label="Main navigation">
-        <a href="#compare" data-nav="compare">Compare</a>
         <a href="#explore" data-nav="explore">Explore</a>
+        <a href="#compare" data-nav="compare">Compare</a>
         <a href="#sources" data-nav="sources">Sources</a>
       </nav>
     </div>
   </header>
   <main class="frame main">
-    <section id="compareView" aria-labelledby="compareTitle">
+    <section id="compareView" aria-labelledby="compareTitle" hidden>
       <div class="page-heading">
-        <div><h1 id="compareTitle">Character comparison</h1><p>Choose two characters and the exact Keys you want to compare.</p></div>
+        <div><h1 id="compareTitle">Character comparison</h1><p>Choose two characters and the exact Keys you want to compare.</p><a class="quiet-link" href="#explore">Browse the full character index</a></div>
         <div class="actions">
           <button class="button text-button" type="button" id="jumpStats" disabled>Jump to stats</button>
           <button class="button secondary" type="button" id="share" disabled>Share link</button>
@@ -75,15 +75,21 @@
         <div id="statsTable"></div>
       </section>
     </section>
-    <section id="exploreView" aria-labelledby="exploreTitle" hidden>
-      <div class="page-heading"><div><h1 id="exploreTitle">Explore characters</h1><p>Search the wiki or look through the profiles in your library.</p></div></div>
+    <section id="exploreView" aria-labelledby="exploreTitle">
+      <div class="page-heading"><div><h1 id="exploreTitle">Explore characters</h1><p>Find a character, discover their versions, or pick two to compare.</p></div><a class="button secondary" href="#compare?a=2443507&amp;b=3424600">Try Goku vs. Vegeta</a></div>
       <form id="exploreSearch" class="explore-search" role="search">
         <label for="exploreQuery" class="sr-only">Search characters</label><input id="exploreQuery" type="search" placeholder="Character or franchise" autocomplete="off">
-        <button type="submit" class="button primary">Search wiki</button>
+        <button type="submit" class="button primary">Search</button>
       </form>
+      <div class="discovery-links" aria-label="Starter profiles"><span>Start with</span><a href="#detail?id=2443507">Goku</a><a href="#detail?id=11706">Saitama</a><a href="#detail?id=1736168">Naruto</a><a href="#detail?id=2169">Spider-Man</a></div>
+      <div class="directory-toolbar">
+        <div><h2 id="directoryTitle">Character index</h2><p id="directoryStatus" class="notice" role="status">Loading the full character index…</p></div>
+        <div class="actions"><label class="directory-letter">Letter <select id="indexLetter"><option value="">All letters</option></select></label><label class="check"><input id="libraryOnly" type="checkbox"> My library only</label><button type="button" class="button secondary" id="randomCharacter" disabled>Random character</button><button type="button" class="button text-button" id="refreshIndex">Refresh index</button></div>
+      </div>
       <div class="explore-tools">
         <details class="panel filters">
-          <summary>Filter library by Key</summary>
+          <summary>Filter by version (Key)</summary>
+          <p class="meta">A Key is a wiki name for a version, era, or form. These filters use profiles whose stats you’ve loaded.</p>
           <form id="filterRules">
             <label class="field">Match <select id="filterCombine"><option value="all">All rules (AND)</option><option value="any">Any rule (OR)</option></select></label>
             <div id="rules"></div>
@@ -94,8 +100,9 @@
       </div>
       <p id="exploreNotice" class="notice" role="status"></p>
       <p id="filterCoverage" class="notice" role="status" hidden></p>
-      <div id="catalog" class="catalog"></div>
-      <div id="catalogPaging" class="actions paging" hidden><button class="button secondary" type="button" id="showMore">Show more</button></div>
+      <p id="catalogCount" class="meta" tabindex="-1"></p>
+      <div id="catalog" class="catalog" aria-labelledby="directoryTitle"></div>
+      <nav id="catalogPaging" class="actions paging" aria-label="Character index pages" hidden><button class="button secondary" type="button" id="previousPage">Previous</button><span class="meta" id="catalogPage" role="status"></span><button class="button secondary" type="button" id="nextPage">Next</button></nav>
     </section>
     <section id="detailView" aria-labelledby="detailTitle" hidden>
       <a href="#explore" class="quiet-link">Back to Explore</a>
@@ -111,7 +118,7 @@
         <article class="panel prose"><h2>Other community scales</h2><p>Character Stats and Profiles Wiki allows multiple editors’ versions of the same character. Power Scaling Wiki defines its own scale. Read their ratings in the context of each wiki’s rules.</p><a href="https://character-stats-and-profiles.fandom.com/wiki/Rules_and_Guidelines">Character Stats and Profiles Wiki rules</a><a href="https://psbattles.fandom.com/wiki/Tiering_System">Power Scaling Wiki tiers</a></article>
         <article class="panel prose"><h2>Key mapping</h2><p>A Key is the wiki’s named edition, era, or form. Atlas maps parallel columns by position. It uses exact tab labels and confirmed aliases in complete, ordered tab sets. It marks shared fields and leaves uncertain fields unmapped.</p><a href="https://vsbattles.fandom.com/wiki/Editing_Rules">Read the wiki’s evidence rules</a></article>
       </div>
-      <section class="panel prose classic"><h2>Classic explorer</h2><p>The classic app still handles full roster indexing, incremental updates, and nested rule groups. Export a classic cache there and import it into Atlas to bring your library across.</p><a href="./legacy/">Open classic explorer</a></section>
+      <section class="panel prose classic"><h2>Classic explorer</h2><p>Use the classic app for incremental wiki updates and nested rule groups. Export a classic cache there and import it into Atlas to bring your library across.</p><a href="./legacy/">Open classic explorer</a></section>
     </section>
     <noscript>Enable JavaScript to search characters and compare Keys.</noscript>
   </main>

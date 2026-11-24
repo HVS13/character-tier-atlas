@@ -50,6 +50,26 @@ export async function searchWiki(query, signal) {
   return (data.query?.search || []).map(({ pageid, title }) => ({ id: pageid, title }));
 }
 
+export async function getCharacterIndex(onProgress) {
+  const source = 'Category:Characters';
+  const pages = new Map();
+  let continuation;
+  do {
+    const response = await wikiRequest({ list: 'categorymembers', cmtitle: source, cmtype: 'page',
+      cmnamespace: '0', cmlimit: '500', cmprop: 'ids|title', ...continuation });
+    const members = response.query?.categorymembers;
+    if (!Array.isArray(members)) throw Error('The wiki did not return character pages.');
+    for (const { pageid, title, ns } of members) if (ns === 0 && Number.isInteger(pageid) && typeof title === 'string') pages.set(pageid, title);
+    if (response.continue && (!response.continue.cmcontinue || response.continue.cmcontinue === continuation?.cmcontinue)) {
+      throw Error('The wiki stopped paging through the character index.');
+    }
+    continuation = response.continue;
+    onProgress?.(pages.size);
+  } while (continuation);
+  if (!pages.size) throw Error('The wiki returned an empty character index.');
+  return { source, checkedAt: new Date().toISOString(), pages: [...pages] };
+}
+
 export async function getPortrait(file) {
   const data = await wikiRequest({ titles: `File:${file}`, prop: 'imageinfo', iiprop: 'url', iiurlwidth: '320' });
   return data.query?.pages?.[0]?.imageinfo?.[0]?.thumburl || '';

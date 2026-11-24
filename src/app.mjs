@@ -1,5 +1,5 @@
 import { MAPPING_VERSION, STATS, TIERS, matchesKey, statAt } from './scaling.mjs?v=2';
-import { adaptLegacy, getPortrait, getProfile, searchWiki } from './wiki.mjs?v=2';
+import { adaptLegacy, getCharacterIndex, getPortrait, getProfile, searchWiki, wikiPage } from './wiki.mjs?v=3';
 import { readLibrary, saveLibrary } from './cache.mjs';
 import { comparisonCsv, coverageChart, describeSelection, escape, keyOptions, portrait, portraitOptions, renderTable, renderValue, sourceLinks, tierChart, tierRelationship } from './views.mjs?v=2';
 
@@ -10,6 +10,9 @@ const portraits = new Map();
 const profiles = new Map();
 const revisions = new Map();
 const roster = new Map();
+const directory = new Map();
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const formatCount = value => value.toLocaleString();
 const slots = [null, null];
 const slotRequests = [0, 0];
 const pageSize = 24;
@@ -18,15 +21,58 @@ let detail;
 let routeVersion = 0;
 let activeView;
 let openingComparison = false;
-let visibleCount = pageSize;
+let catalogPage = 1;
 let wikiResults = [];
 let exploreRequest;
 let exploreQuery = '';
+let directoryTask;
+let cachedDirectory;
 
 function message(id, text = '', error = false) {
   const node = $(id);
   node.textContent = text;
   node.dataset.error = String(error);
+}
+
+function useDirectory(index) {
+  if (index.source !== 'Category:Characters' || !index.pages?.length) throw Error('The character index is unavailable.');
+  const pages = [...index.pages].sort((a, b) => collator.compare(a[1], b[1]));
+  directory.clear();
+  for (const [id, title] of pages) directory.set(id, { id, title, searchTitle: title.toLowerCase() });
+  cachedDirectory = index;
+  const date = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(index.checkedAt));
+  message('directoryStatus', `${formatCount(directory.size)} character pages in the index · ${date}`);
+  $('randomCharacter').disabled = false;
+  if (activeView === 'explore') renderCatalog();
+}
+
+function loadDirectory(refresh = false) {
+  if (directoryTask) return directoryTask;
+  if (!refresh && directory.size) return Promise.resolve();
+  $('refreshIndex').disabled = true;
+  message('directoryStatus', refresh ? 'Refreshing the wiki index…' : 'Loading the full character index…');
+  directoryTask = (async () => {
+    try {
+      if (refresh) {
+        const index = await getCharacterIndex(count => message('directoryStatus', `Refreshing the wiki index · ${formatCount(count)} pages found`));
+        useDirectory(index);
+        try { await saveLibrary('directory', { directory: index }); }
+        catch { message('directoryStatus', `${formatCount(directory.size)} character pages loaded for this session. Browser storage is unavailable.`, true); }
+      } else if (cachedDirectory) useDirectory(cachedDirectory);
+      else {
+        const response = await fetch(new URL('./roster.json?v=1', import.meta.url));
+        if (!response.ok) throw Error('The character index did not load.');
+        useDirectory(await response.json());
+      }
+    } catch {
+      message('directoryStatus', directory.size
+        ? `The refresh stopped. The ${formatCount(directory.size)} pages already in your index are still available.`
+        : 'The full index could not load. You can still search the wiki or retry with Refresh index.', true);
+    } finally {
+      $('refreshIndex').disabled = false;
+    }
+  })().finally(() => { directoryTask = undefined; });
+  return directoryTask;
 }
 
 function addProfiles(rows) {
@@ -94,7 +140,7 @@ function renderSlot(i) {
   const { profile, key } = slot;
   $(name + 'Detail').href = detailsHash(slot);
   $(name + 'Card').innerHTML = `<div class="identity" data-slot-portrait>${portrait(profile.title, portraitSource(slot))}<div><h3>${escape(profile.title)}</h3><p class="meta">${metadata(profile)}</p></div></div>
-    <div class="selection-fields"><label class="field">Statistics Key<select data-slot-key="${i}">${keyOptions(profile, key)}</select></label>${portraitField(slot, `data-slot-appearance="${i}"`)}</div>${sourceLinks(profile)}`;
+    <div class="selection-fields"><label class="field">Version (Key)<select data-slot-key="${i}">${keyOptions(profile, key)}</select></label>${portraitField(slot, `data-slot-appearance="${i}"`)}</div>${sourceLinks(profile)}`;
   loadAppearance(slot, name + 'Card');
 }
 
@@ -150,13 +196,18 @@ function updateComparisonUrl() {
   if (!location.hash || location.hash.startsWith('#compare')) history.replaceState(null, '', comparisonHash());
 }
 
-function localMatches(query) {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  return [...roster.values()].filter(row => {
+function localMatches(query, libraryOnly = false) {
+  const normalized = query.toLowerCase();
+  const terms = normalized.split(/\s+/).filter(Boolean);
+  const rows = libraryOnly || !directory.size ? [...roster.values()] : [...directory.values(), ...[...roster.values()].filter(row => !directory.has(row.id))];
+  if (!terms.length) return rows;
+  const matches = rows.filter(row => {
     const p = profiles.get(row.id);
-    const text = [row.title, p?.origin, p?.keys.map(key => key.name).join(' ')].join(' ').toLowerCase();
+    const title = row.searchTitle || row.title.toLowerCase();
+    const text = p ? `${title} ${p.origin} ${p.keys.map(key => key.name).join(' ')}`.toLowerCase() : title;
     return terms.every(term => text.includes(term));
   });
+  return matches.sort((a, b) => Number(b.title.toLowerCase().startsWith(normalized)) - Number(a.title.toLowerCase().startsWith(normalized)));
 }
 
 function mergedRows(first, second) {
@@ -207,12 +258,14 @@ function bindPicker(name, i) {
     controller?.abort();
     const search = new AbortController();
     controller = search;
-    const local = localMatches(query).slice(0, 14);
+    const index = loadDirectory();
     try {
-      const rows = mergedRows(local, await searchWiki(query, AbortSignal.any([search.signal, AbortSignal.timeout(12000)]))).slice(0, 18);
+      const live = await searchWiki(query, AbortSignal.any([search.signal, AbortSignal.timeout(12000)]));
+      const rows = mergedRows(localMatches(query).slice(0, 14), live).slice(0, 18);
       if (!search.signal.aborted && query === input.value.trim()) show(rows, rows.length ? '' : 'No matches on the wiki.');
     } catch {
-      if (!search.signal.aborted) show(local, 'Wiki search is unavailable.');
+      await index;
+      if (!search.signal.aborted) show(localMatches(query).slice(0, 14), 'Live wiki search is unavailable. Showing index matches.');
     }
   }
   input.setAttribute('aria-controls', results.id);
@@ -278,22 +331,33 @@ function rulesInUse() {
 function renderCatalog() {
   const rules = rulesInUse();
   const combine = $('filterCombine').value;
-  const library = localMatches(exploreQuery);
-  const available = mergedRows(library, wikiResults);
-  const numIndexed = available.filter(row => profiles.has(row.id)).length;
+  const letter = $('indexLetter').value;
+  const libraryOnly = $('libraryOnly').checked;
+  const listed = localMatches(exploreQuery, libraryOnly);
+  const available = (wikiResults.length && !libraryOnly ? mergedRows(listed, wikiResults) : listed).filter(row => {
+    const initial = row.title.normalize('NFKD').charAt(0).toUpperCase();
+    return !letter || (letter === '#' ? !/^[A-Z]$/.test(initial) : initial === letter);
+  });
+  const numIndexed = rules.length ? available.filter(row => profiles.has(row.id)).length : 0;
   $('filterCoverage').hidden = !rules.length;
-  $('filterCoverage').textContent = `${numIndexed} profiles checked · ${available.length - numIndexed} entries need profile data`;
+  $('filterCoverage').textContent = `${formatCount(numIndexed)} profiles checked · ${formatCount(available.length - numIndexed)} entries need profile data`;
   const rows = rules.length ? available.flatMap(row => {
     const profile = profiles.get(row.id);
     if (!profile) return [];
     const rulesMatch = profile.keys.flatMap((_, key) => matchesKey(profile, key, rules, combine) ? [key] : []);
     return rulesMatch.length ? [{ ...row, rulesMatch }] : [];
   }) : available;
-  $('catalogPaging').hidden = rows.length <= visibleCount;
-  $('showMore').textContent = `Show more (${Math.min(visibleCount, rows.length)} of ${rows.length})`;
-  $('catalog').innerHTML = rows.slice(0, visibleCount).map(row => {
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  catalogPage = Math.min(catalogPage, totalPages);
+  const first = (catalogPage - 1) * pageSize;
+  $('catalogPaging').hidden = totalPages === 1;
+  $('previousPage').disabled = catalogPage === 1;
+  $('nextPage').disabled = catalogPage === totalPages;
+  $('catalogPage').textContent = `Page ${formatCount(catalogPage)} of ${formatCount(totalPages)}`;
+  $('catalogCount').textContent = rows.length ? `${formatCount(first + 1)}–${formatCount(Math.min(first + pageSize, rows.length))} of ${formatCount(rows.length)} entries` : '0 entries';
+  $('catalog').innerHTML = rows.slice(first, first + pageSize).map(row => {
     const profile = profiles.get(row.id);
-    const label = row.rulesMatch ? `${row.rulesMatch.length} matching ${row.rulesMatch.length === 1 ? 'Key' : 'Keys'}` : profile ? `${profile.keys.length} ${profile.keys.length === 1 ? 'Key' : 'Keys'}` : 'Wiki result';
+    const label = row.rulesMatch ? `${row.rulesMatch.length} matching ${row.rulesMatch.length === 1 ? 'Key' : 'Keys'}` : profile ? `${profile.keys.length} ${profile.keys.length === 1 ? 'Key' : 'Keys'}` : 'Open to load profile';
     const key = row.rulesMatch?.[0] || 0;
     const details = profile ? detailsHash(selection(profile, key)) : `#detail?${new URLSearchParams({ id: row.id })}`;
     const matching = row.rulesMatch ? `<p class="meta">${escape(row.rulesMatch.slice(0, 2).map(index => profile.keys[index].name).join(' · '))}${row.rulesMatch.length > 2 ? ' · …' : ''}</p>` : '';
@@ -320,9 +384,10 @@ async function exploreSearch(event) {
   const query = $('exploreQuery').value.trim();
   exploreQuery = query;
   wikiResults = [];
-  visibleCount = pageSize;
+  catalogPage = 1;
   renderCatalog();
   if (!query) { message('exploreNotice'); return; }
+  if ($('libraryOnly').checked) { message('exploreNotice'); return; }
   if (rulesInUse().length) {
     message('exploreNotice', 'Showing verified matches from your library. Clear the rules to search the wiki.');
     return;
@@ -333,9 +398,9 @@ async function exploreSearch(event) {
     if (controller.signal.aborted) return;
     wikiResults = results;
     renderCatalog();
-    message('exploreNotice', `${wikiResults.length} wiki results`);
+    message('exploreNotice');
   } catch {
-    if (!controller.signal.aborted) message('exploreNotice', 'Wiki search is unavailable. Showing matches in your library.', true);
+    if (!controller.signal.aborted) message('exploreNotice', 'Live wiki search is unavailable. Showing matches from the index and library.', true);
   }
 }
 
@@ -344,7 +409,7 @@ function renderDetail() {
   const selected = profile.keys[key];
   $('detailContent').innerHTML = `<div class="detail-head">${portrait(profile.title, portraitSource(detail))}<div><h1 id="detailTitle">${escape(profile.title)}</h1><p class="meta">${metadata(profile)}</p>${sourceLinks(profile)}</div></div>
     <div class="detail-grid"><section class="panel prose"><h2>Version and evidence</h2><div class="selection-fields">
-      <label class="field">Statistics Key<select data-detail-key>${keyOptions(profile, key)}</select></label>${portraitField(detail, 'data-detail-appearance')}</div>
+      <label class="field">Version (Key)<select data-detail-key>${keyOptions(profile, key)}</select></label>${portraitField(detail, 'data-detail-appearance')}</div>
       ${selected.tiers.length ? `<div class="tags" aria-label="Tier ratings">${selected.tiers.map(tier => `<span>${escape(tier)}</span>`).join('')}</div>` : ''}
       <p>${selected.rating ? escape(selected.rating) : selected.tiers.length ? 'Refresh to read the current tier rating text.' : 'No tier rating is mapped to this Key.'}</p>
       <div class="actions"><button type="button" class="button primary" data-detail-copy>Copy selection</button><button type="button" class="button secondary" data-to-slot="0">Use as A</button><button type="button" class="button secondary" data-to-slot="1">Use as B</button></div></section>
@@ -371,7 +436,9 @@ async function showDetail(id, key, appearance, revision, version) {
     renderDetail();
   } catch (error) {
     if (version !== routeVersion) return;
-    $('detailContent').innerHTML = '<div class="page-heading"><h1 id="detailTitle">Profile unavailable</h1></div>';
+    const entry = directory.get(id) || roster.get(id) || wikiResults.find(result => result.id === id);
+    const wiki = entry ? `<a class="button secondary" href="${escape(wikiPage(entry.title))}" target="_blank" rel="noopener noreferrer">Open wiki page</a>` : '';
+    $('detailContent').innerHTML = `<div class="page-heading"><h1 id="detailTitle">${escape(entry?.title || 'Profile unavailable')}</h1>${wiki}</div>`;
     message('detailNotice', error.message, true);
   }
 }
@@ -379,7 +446,7 @@ async function showDetail(id, key, appearance, revision, version) {
 async function route() {
   const version = ++routeVersion;
   const [path, query] = location.hash.slice(1).split('?');
-  const view = ['compare', 'explore', 'sources', 'detail'].includes(path) ? path : 'compare';
+  const view = ['compare', 'explore', 'sources', 'detail'].includes(path) ? path : 'explore';
   for (const name of ['compare', 'explore', 'sources', 'detail']) $(name + 'View').hidden = name !== view;
   if (view !== activeView) document.documentElement.scrollTop = 0;
   activeView = view;
@@ -389,7 +456,10 @@ async function route() {
   }
   const params = new URLSearchParams(query);
   openingComparison = false;
-  if (view === 'explore') renderCatalog();
+  if (view === 'explore') {
+    renderCatalog();
+    loadDirectory();
+  }
   if (view === 'detail') await showDetail(Number(params.get('id')), Number(params.get('key')), Number(params.get('appearance')), Number(params.get('revision')), version);
   if (view !== 'compare') return;
   if (query) {
@@ -432,6 +502,7 @@ async function init() {
   } catch (error) { message('compareNotice', error.message, true); }
   try {
     for (const library of await readLibrary()) {
+      if (library.directory) { cachedDirectory = library.directory; continue; }
       (library.roster || []).forEach(row => roster.set(row.id, row));
       addProfiles(library.profiles);
     }
@@ -472,13 +543,26 @@ async function init() {
   });
   $('exploreSearch').addEventListener('submit', exploreSearch);
   $('exploreQuery').addEventListener('search', event => { if (!event.target.value) exploreSearch(event); });
-  $('showMore').addEventListener('click', () => { visibleCount += pageSize; renderCatalog(); });
+  $('indexLetter').insertAdjacentHTML('beforeend', [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'].map(letter => `<option>${letter}</option>`).join(''));
+  for (const id of ['indexLetter', 'libraryOnly']) $(id).addEventListener('change', () => { catalogPage = 1; renderCatalog(); });
+  $('refreshIndex').addEventListener('click', () => loadDirectory(true));
+  $('randomCharacter').addEventListener('click', () => {
+    const pages = cachedDirectory.pages;
+    const [id] = pages[Math.floor(Math.random() * pages.length)];
+    location.hash = `#detail?id=${id}`;
+  });
+  for (const [id, direction] of [['previousPage', -1], ['nextPage', 1]]) $(id).addEventListener('click', () => {
+    catalogPage += direction;
+    renderCatalog();
+    $('catalogCount').focus();
+    $('catalogCount').scrollIntoView({ block: 'start' });
+  });
   $('catalog').addEventListener('click', event => {
     const button = event.target.closest('[data-catalog-side]');
     if (button) setSlot(Number(button.dataset.catalogSide), Number(button.dataset.id), { key: Number(button.dataset.key), navigate: true });
   });
   $('addRule').addEventListener('click', addRule);
-  $('clearRules').addEventListener('click', () => { $('rules').replaceChildren(); renderCatalog(); message('exploreNotice'); });
+  $('clearRules').addEventListener('click', () => { $('rules').replaceChildren(); catalogPage = 1; renderCatalog(); message('exploreNotice'); });
   $('filterRules').addEventListener('submit', event => { event.preventDefault(); renderCatalog(); });
   $('filterRules').addEventListener('change', event => {
     if (event.target.matches('.rule select:first-child')) {
@@ -486,12 +570,12 @@ async function init() {
         ? `<select aria-label="Filter value"><option value="">Select a tier</option>${[...TIERS].reverse().map(tier => `<option>${tier}</option>`).join('')}</select>`
         : '<input type="text" aria-label="Filter value" placeholder="Contains text">';
     }
-    visibleCount = pageSize;
+    catalogPage = 1;
     renderCatalog();
   });
   $('rules').addEventListener('click', event => {
     const button = event.target.closest('[data-remove-rule]');
-    if (button) { button.closest('.rule').remove(); renderCatalog(); }
+    if (button) { button.closest('.rule').remove(); catalogPage = 1; renderCatalog(); }
   });
   $('importButton').addEventListener('click', () => $('importFile').click());
   $('importFile').addEventListener('change', async event => {

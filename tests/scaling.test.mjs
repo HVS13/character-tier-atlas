@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { matchesKey, parseProfile, statAt } from '../src/scaling.mjs';
-import { adaptLegacy, getProfile, toProfile } from '../src/wiki.mjs';
+import { adaptLegacy, getCharacterIndex, getProfile, toProfile } from '../src/wiki.mjs';
 import { comparisonCsv, describeSelection, portrait, renderTable, tierChart, tierRelationship } from '../src/views.mjs';
 
 test('reads top-level columns, preserves gaps and does not flatten ratings', () => {
@@ -79,6 +79,30 @@ test('renders a small wiki thumbnail with no referrer', () => {
   const markup = portrait('Son Goku', 'https://static.wikia.nocookie.net/vsbattles/images/goku.png/revision/latest/scale-to-width-down/320?cb=1');
   assert.match(markup, /scale-to-width-down\/160\?cb=1/);
   assert.match(markup, /referrerpolicy="no-referrer"/);
+});
+
+test('loads all main-namespace roster pages and deduplicates continued results', async t => {
+  const request = t.mock.method(globalThis, 'fetch', async url => {
+    const next = url.searchParams.get('cmcontinue');
+    assert.equal(url.searchParams.get('cmtitle'), 'Category:Characters');
+    assert.equal(url.searchParams.get('cmnamespace'), '0');
+    const members = [{ pageid: 1, ns: 0, title: 'First' }];
+    if (next) members.push({ pageid: 2, ns: 0, title: 'Second' });
+    return Response.json({ query: { categorymembers: members }, ...(next ? {} : { continue: { cmcontinue: 'next', continue: '-||' } }) });
+  });
+  const counts = [];
+  const index = await getCharacterIndex(count => counts.push(count));
+  assert.equal(request.mock.calls.length, 2);
+  assert.deepEqual(counts, [1, 2]);
+  assert.deepEqual(index.pages, [[1, 'First'], [2, 'Second']]);
+});
+
+test('ships the character directory separately from starter stat profiles', async () => {
+  const { pages, source } = JSON.parse(await readFile(new URL('../src/roster.json', import.meta.url), 'utf8'));
+  assert.equal(source, 'Category:Characters');
+  assert(pages.length > 30000);
+  assert.equal(new Set(pages.map(([id]) => id)).size, pages.length);
+  assert(pages.some(([id, title]) => id === 104428 && title === 'Garou'));
 });
 
 test('imports classic backups with only attributable stats', () => {
